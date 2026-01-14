@@ -22,7 +22,7 @@ __pycache__/
 *.log
 logs/
 
-# Environment variables (if you add any)
+# Environment variables
 .env
 .env.local
 
