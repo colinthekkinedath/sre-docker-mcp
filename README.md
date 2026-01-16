@@ -72,6 +72,7 @@ python sre_docker_server.py
 - "Show deployment history"
 - "Create an incident for high CPU usage"
 - "Perform rolling update of my-app to version 2.0"
+- "Export Prometheus metrics for monitoring"
 
 ## Available Tools
 
@@ -83,6 +84,7 @@ python sre_docker_server.py
 - `create_incident` - SRE incident tracking
 - `compose_up/down` - Docker Compose operations
 - `system_prune` - Cleanup unused resources
+- `export_prometheus_metrics` - Export metrics in Prometheus format
 - And many more...
 
 ## Architecture
@@ -145,13 +147,44 @@ sudo usermod -aG docker $USER
 - Check Claude Desktop logs
 - Restart Claude Desktop completely
 
+## Prometheus Metrics Integration
+
+The server now supports exporting metrics in Prometheus text format for monitoring and alerting.
+
+### Exported Metrics
+
+**Container Metrics:**
+- `container_cpu_usage_percent` - CPU usage percentage per container
+- `container_memory_usage_bytes` - Memory usage in bytes
+- `container_memory_limit_bytes` - Memory limit in bytes
+- `container_network_rx_bytes` - Network received bytes (counter)
+- `container_network_tx_bytes` - Network transmitted bytes (counter)
+- `container_block_read_bytes` - Block device read bytes (counter)
+- `container_block_write_bytes` - Block device write bytes (counter)
+- `container_restart_count` - Number of container restarts (counter)
+- `container_up` - Container status (1 = running, 0 = stopped)
+
+**System Metrics:**
+- `docker_containers_total` - Total number of containers
+- `docker_containers_running` - Number of running containers
+- `docker_containers_stopped` - Number of stopped containers
+- `docker_images_total` - Total number of images
+
+### Usage with Prometheus
+
+1. **Via Claude Desktop**: Simply ask "Export Prometheus metrics" and save the output to a file
+2. **Integrate with Prometheus**: Set up a text file collector or create an HTTP endpoint wrapper
+3. **Example Query**: Use metrics like `container_cpu_usage_percent{container_name="nginx"}`
+
+All container metrics include labels: `container_id`, `container_name`, and `image` for easy filtering and aggregation.
+
 ## Roadmap
 
 - [ ] Add alerting webhooks (Slack, PagerDuty)
 - [ ] Log analysis and anomaly detection
 - [ ] Custom runbook automation
 - [ ] Kubernetes support
-- [ ] Prometheus metrics export
+- [x] Prometheus metrics export
 - [ ] Web dashboard
 
 ## Support

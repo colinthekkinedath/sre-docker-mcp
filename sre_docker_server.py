@@ -775,6 +775,107 @@ class SREDockerManager:
         except DockerException as e:
             return {"error": str(e)}
 
+    def export_prometheus_metrics(self) -> str:
+        """Export container metrics in Prometheus text format"""
+        try:
+            containers = self.client.containers.list(all=True)
+            metrics_lines = []
+            timestamp = int(datetime.now().timestamp() * 1000)
+
+            # Add metric descriptions
+            metrics_lines.append("# HELP container_cpu_usage_percent Container CPU usage percentage")
+            metrics_lines.append("# TYPE container_cpu_usage_percent gauge")
+            metrics_lines.append("# HELP container_memory_usage_bytes Container memory usage in bytes")
+            metrics_lines.append("# TYPE container_memory_usage_bytes gauge")
+            metrics_lines.append("# HELP container_memory_limit_bytes Container memory limit in bytes")
+            metrics_lines.append("# TYPE container_memory_limit_bytes gauge")
+            metrics_lines.append("# HELP container_network_rx_bytes Container network received bytes")
+            metrics_lines.append("# TYPE container_network_rx_bytes counter")
+            metrics_lines.append("# HELP container_network_tx_bytes Container network transmitted bytes")
+            metrics_lines.append("# TYPE container_network_tx_bytes counter")
+            metrics_lines.append("# HELP container_block_read_bytes Container block device read bytes")
+            metrics_lines.append("# TYPE container_block_read_bytes counter")
+            metrics_lines.append("# HELP container_block_write_bytes Container block device write bytes")
+            metrics_lines.append("# TYPE container_block_write_bytes counter")
+            metrics_lines.append("# HELP container_restart_count Container restart count")
+            metrics_lines.append("# TYPE container_restart_count counter")
+            metrics_lines.append("# HELP container_up Container is running (1) or not (0)")
+            metrics_lines.append("# TYPE container_up gauge")
+            metrics_lines.append("")
+
+            for container in containers:
+                try:
+                    # Get container info
+                    container_id = container.id[:12]
+                    container_name = container.name
+                    image = container.image.tags[0] if container.image.tags else container.image.id[:12]
+                    status = container.status
+                    restart_count = container.attrs["RestartCount"]
+
+                    # Create label string
+                    labels = f'container_id="{container_id}",container_name="{container_name}",image="{image}"'
+
+                    # Container status (up = 1, down = 0)
+                    is_up = 1 if status == "running" else 0
+                    metrics_lines.append(f"container_up{{{labels}}} {is_up} {timestamp}")
+
+                    # Restart count
+                    metrics_lines.append(f"container_restart_count{{{labels}}} {restart_count} {timestamp}")
+
+                    # Get stats only for running containers
+                    if status == "running":
+                        stats = self._get_container_stats(container)
+                        if "error" not in stats:
+                            # CPU usage
+                            metrics_lines.append(f"container_cpu_usage_percent{{{labels}}} {stats['cpu_percent']} {timestamp}")
+
+                            # Memory usage and limit
+                            memory_bytes = int(stats['memory_usage_mb'] * 1024 * 1024)
+                            memory_limit_bytes = int(stats['memory_limit_mb'] * 1024 * 1024)
+                            metrics_lines.append(f"container_memory_usage_bytes{{{labels}}} {memory_bytes} {timestamp}")
+                            metrics_lines.append(f"container_memory_limit_bytes{{{labels}}} {memory_limit_bytes} {timestamp}")
+
+                            # Network I/O
+                            network_rx_bytes = int(stats['network_rx_mb'] * 1024 * 1024)
+                            network_tx_bytes = int(stats['network_tx_mb'] * 1024 * 1024)
+                            metrics_lines.append(f"container_network_rx_bytes{{{labels}}} {network_rx_bytes} {timestamp}")
+                            metrics_lines.append(f"container_network_tx_bytes{{{labels}}} {network_tx_bytes} {timestamp}")
+
+                            # Block I/O
+                            block_read_bytes = int(stats['block_read_mb'] * 1024 * 1024)
+                            block_write_bytes = int(stats['block_write_mb'] * 1024 * 1024)
+                            metrics_lines.append(f"container_block_read_bytes{{{labels}}} {block_read_bytes} {timestamp}")
+                            metrics_lines.append(f"container_block_write_bytes{{{labels}}} {block_write_bytes} {timestamp}")
+
+                except Exception as e:
+                    print(f"Error exporting metrics for container {container.name}: {e}")
+                    continue
+
+            # Add system-wide metrics
+            system_info = self.get_system_info()
+            if "error" not in system_info:
+                metrics_lines.append("")
+                metrics_lines.append("# HELP docker_containers_total Total number of containers")
+                metrics_lines.append("# TYPE docker_containers_total gauge")
+                metrics_lines.append(f"docker_containers_total {system_info['containers_total']} {timestamp}")
+
+                metrics_lines.append("# HELP docker_containers_running Number of running containers")
+                metrics_lines.append("# TYPE docker_containers_running gauge")
+                metrics_lines.append(f"docker_containers_running {system_info['containers_running']} {timestamp}")
+
+                metrics_lines.append("# HELP docker_containers_stopped Number of stopped containers")
+                metrics_lines.append("# TYPE docker_containers_stopped gauge")
+                metrics_lines.append(f"docker_containers_stopped {system_info['containers_stopped']} {timestamp}")
+
+                metrics_lines.append("# HELP docker_images_total Total number of images")
+                metrics_lines.append("# TYPE docker_images_total gauge")
+                metrics_lines.append(f"docker_images_total {system_info['images']} {timestamp}")
+
+            return "\n".join(metrics_lines)
+
+        except DockerException as e:
+            return f"# Error exporting metrics: {str(e)}"
+
 
 # ==================== MCP Server Setup ====================
 
@@ -1152,6 +1253,11 @@ async def list_tools() -> list[Tool]:
                 "required": ["container_name"],
             },
         ),
+        Tool(
+            name="export_prometheus_metrics",
+            description="Export container and system metrics in Prometheus text format for monitoring and alerting",
+            inputSchema={"type": "object", "properties": {}},
+        ),
     ]
 
 
@@ -1290,6 +1396,10 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
         except Exception as e:
             result = {"error": str(e)}
         return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "export_prometheus_metrics":
+        metrics_text = manager.export_prometheus_metrics()
+        return [TextContent(type="text", text=metrics_text)]
 
     else:
         return [TextContent(type="text", text=json.dumps({"error": "Unknown tool"}))]
