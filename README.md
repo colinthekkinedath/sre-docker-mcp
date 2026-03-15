@@ -2,6 +2,8 @@
 
 A comprehensive Model Context Protocol (MCP) server for Docker management with SRE capabilities.
 
+AI SLOPPPP
+
 ## Features
 
 - 🐳 Full Docker container lifecycle management
